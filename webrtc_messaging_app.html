@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebRTC Peer Chat (Automated Signaling)</title>
+    <!-- PeerJS CDN for automated signaling -->
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #f7f9fb; }
+        .card {
+            background-color: #ffffff;
+            border-radius: 12px;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+        .btn {
+            padding: 0.6rem 1rem;
+            border-radius: 8px;
+            font-weight: 600;
+            transition: all 0.15s ease;
+            box-shadow: 0 2px 0 0 rgba(0,0,0,0.1);
+        }
+        .btn-host {
+            background-color: #10b981; /* Emerald Green */
+            color: white;
+        }
+        .btn-host:hover {
+            background-color: #059669;
+        }
+        .btn-client {
+            background-color: #3b82f6; /* Blue */
+            color: white;
+        }
+        .btn-client:hover {
+            background-color: #2563eb;
+        }
+        .status-badge {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: 9999px;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+        .status-disconnected { background-color: #fee2e2; color: #dc2626; }
+        .status-connecting { background-color: #fef3c7; color: #d97706; }
+        .status-connected { background-color: #d1fae5; color: #059669; }
+        .chat-message-local { text-align: right; }
+        .chat-message-remote { text-align: left; }
+        .chat-bubble-local { background-color: #bfdbfe; color: #1e3a8a; border-radius: 10px 10px 0 10px; padding: 8px 12px; display: inline-block; max-width: 80%; }
+        .chat-bubble-remote { background-color: #e5e7eb; color: #1f2937; border-radius: 10px 10px 10px 0; padding: 8px 12px; display: inline-block; max-width: 80%; }
+        .id-display {
+            background-color: #e0f2f1; /* Light cyan */
+            color: #0d9488;
+            padding: 0.75rem;
+            border-radius: 8px;
+            font-size: 1.1rem;
+            font-weight: 700;
+            text-align: center;
+            overflow-wrap: break-word;
+            word-break: break-all;
+        }
+    </style>
+</head>
+<body class="p-4 sm:p-8">
+    <div class="max-w-4xl mx-auto">
+        <h1 class="text-3xl font-bold text-gray-800 mb-6 text-center">WebRTC Peer Chat</h1>
+        <p class="text-gray-600 mb-4 text-center">
+            Using a public server to automate WebRTC signaling. One person creates the ID (Host), the other connects (Client).
+        </p>
+        
+        <!-- Connection Status -->
+        <div class="card flex justify-center items-center gap-4">
+            <span class="text-lg font-medium text-gray-700">Status:</span>
+            <span id="connection-status" class="status-badge status-disconnected">Disconnected</span>
+        </div>
+
+        <!-- Connection Area -->
+        <div id="connection-area" class="card bg-gray-50 border border-gray-200">
+            <h2 class="text-xl font-semibold mb-3 text-gray-700">Connection Setup</h2>
+            
+            <div class="space-y-4">
+                <input type="text" id="peer-id-input" class="w-full border border-gray-300 rounded-lg p-3 text-base focus:ring-blue-500 focus:border-blue-500" placeholder="Enter a unique ID (e.g., 'LAN_CHAT_42')">
+                
+                <div class="flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-3">
+                    <button id="host-btn" onclick="startHost()" class="btn btn-host w-full">1. Start as Host (Create ID)</button>
+                    <button id="client-btn" onclick="connectToHost()" class="btn btn-client w-full">2. Connect to Host (Use ID)</button>
+                </div>
+                
+                <div id="host-id-display" class="id-display hidden">
+                    Your ID is: <span id="current-peer-id" class="font-extrabold"></span>
+                    <br><span class="text-sm font-normal">Share this ID with the other person.</span>
+                </div>
+
+                <p id="setup-message" class="text-sm text-gray-600 italic mt-4 text-center">
+                    Enter a common ID in the box above to begin.
+                </p>
+            </div>
+        </div>
+
+        <!-- Chat Area -->
+        <div id="chat-area" class="card bg-gray-100 mt-6">
+            <h2 class="text-xl font-semibold mb-3 text-gray-700">Chat</h2>
+            <div id="chat-messages" class="h-64 overflow-y-auto p-3 bg-white border border-gray-300 rounded-lg mb-4 space-y-3">
+                <!-- Messages will appear here -->
+                <p class="text-center text-gray-500 text-sm">Waiting for connection...</p>
+            </div>
+
+            <div class="flex space-x-2">
+                <input type="text" id="message-input" class="flex-grow border border-gray-300 rounded-lg p-3 focus:ring-blue-500 focus:border-blue-500" placeholder="Type a message..." disabled>
+                <button id="send-button" onclick="sendMessage()" class="btn btn-primary" disabled>Send</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- Global State ---
+        let peer;
+        let connection;
+        
+        // DOM elements
+        const statusEl = document.getElementById('connection-status');
+        const peerIdInputEl = document.getElementById('peer-id-input');
+        const hostIdDisplayEl = document.getElementById('host-id-display');
+        const currentPeerIdEl = document.getElementById('current-peer-id');
+        const setupMessageEl = document.getElementById('setup-message');
+        const chatMessagesEl = document.getElementById('chat-messages');
+        const messageInputEl = document.getElementById('message-input');
+        const sendButton = document.getElementById('send-button');
+        const hostBtn = document.getElementById('host-btn');
+        const clientBtn = document.getElementById('client-btn');
+
+        // Configuration for PeerJS (using the default public broker)
+        const peerConfig = {};
+
+        /**
+         * Utility function to log messages to the console and the chat area.
+         */
+        function log(message, type = 'system') {
+            console.log(message);
+            if (type === 'system') {
+                const p = document.createElement('p');
+                p.className = 'text-center text-gray-500 text-sm italic';
+                p.textContent = `[${message}]`;
+                chatMessagesEl.appendChild(p);
+                chatMessagesEl.scrollTop = chatMessagesEl.scrollHeight;
+            }
+        }
+
+        /**
+         * Updates the connection status badge.
+         */
+        function updateStatus(state) {
+            statusEl.textContent = state;
+            statusEl.className = 'status-badge';
+
+            if (state === 'disconnected') {
+                statusEl.classList.add('status-disconnected');
+                messageInputEl.disabled = true;
+                sendButton.disabled = true;
+            } else if (state === 'connecting') {
+                statusEl.classList.add('status-connecting');
+            } else if (state === 'connected') {
+                statusEl.classList.add('status-connected');
+                messageInputEl.disabled = false;
+                sendButton.disabled = false;
+            }
+        }
+
+        /**
+         * Sets up listeners for the data connection (both host and client).
+         */
+        function setupConnectionListeners(conn) {
+            connection = conn;
+            updateStatus('connecting');
+
+            connection.on('open', () => {
+                updateStatus('connected');
+                log('Connection is open! You can now chat.', 'system');
+                hostBtn.disabled = true;
+                clientBtn.disabled = true;
+                peerIdInputEl.disabled = true;
+            });
+
+            connection.on('data', data => {
+                displayMessage(data, 'remote');
+            });
+
+            connection.on('close', () => {
+                updateStatus('disconnected');
+                log('Connection closed.', 'system');
+                // Allow re-connecting
+                hostBtn.disabled = false;
+                clientBtn.disabled = false;
+                peerIdInputEl.disabled = false;
+            });
+
+            connection.on('error', (err) => {
+                log(`Connection Error: ${err.type}`, 'system');
+                updateStatus('disconnected');
+            });
+        }
+
+        /**
+         * Initializes the PeerJS instance.
+         */
+        function initializePeer(id) {
+            if (peer) peer.destroy();
+
+            peer = new Peer(id, peerConfig);
+            updateStatus('connecting');
+            
+            // PeerJS Events
+            peer.on('open', (peerId) => {
+                log(`Peer initialized with ID: ${peerId}`, 'system');
+                currentPeerIdEl.textContent = peerId;
+            });
+
+            peer.on('error', (err) => {
+                log(`Peer Error: ${err.message}`, 'system');
+                updateStatus('disconnected');
+                hostBtn.disabled = false;
+                clientBtn.disabled = false;
+            });
+        }
+
+        // --- Host Logic (Creates the ID and waits for connection) ---
+        window.startHost = function() {
+            const hostId = peerIdInputEl.value.trim();
+            if (!hostId) {
+                alert('Please enter a unique ID for the host.');
+                return;
+            }
+
+            // 1. Initialize Peer
+            initializePeer(hostId);
+            
+            // 2. Set up listener for incoming connections
+            peer.on('connection', (conn) => {
+                log(`Incoming connection detected from peer: ${conn.peer}`, 'system');
+                setupConnectionListeners(conn);
+            });
+
+            // 3. Update UI
+            setupMessageEl.textContent = 'Waiting for the client to connect...';
+            hostIdDisplayEl.classList.remove('hidden');
+            hostBtn.disabled = true;
+            clientBtn.disabled = true;
+            peerIdInputEl.disabled = true;
+        }
+
+        // --- Client Logic (Uses the Host's ID to connect) ---
+        window.connectToHost = function() {
+            const hostId = peerIdInputEl.value.trim();
+            if (!hostId) {
+                alert('Please enter the Host ID to connect.');
+                return;
+            }
+
+            // 1. Initialize Peer (random ID for client)
+            initializePeer(); 
+            
+            // 2. Initiate the connection
+            peer.on('open', (clientId) => {
+                log(`Attempting to connect to host: ${hostId}`, 'system');
+                const conn = peer.connect(hostId);
+                setupConnectionListeners(conn);
+            });
+            
+            // 3. Update UI
+            setupMessageEl.textContent = `Attempting to connect to ID: ${hostId}...`;
+            hostIdDisplayEl.classList.add('hidden');
+            hostBtn.disabled = true;
+            clientBtn.disabled = true;
+            peerIdInputEl.disabled = true;
+        }
+
+
+        // --- Messaging ---
+        
+        /**
+         * Sends the message via the RTCDataChannel.
+         */
+        window.sendMessage = () => {
+            const message = messageInputEl.value.trim();
+            if (message === '' || !connection) return;
+
+            if (connection.open) {
+                connection.send(message);
+                displayMessage(message, 'local');
+                messageInputEl.value = '';
+            } else {
+                log('Cannot send message. Connection is not open.', 'system');
+            }
+        }
+        
+        /**
+         * Displays a message in the chat area.
+         */
+        function displayMessage(message, sender) {
+            const messageContainer = document.createElement('div');
+            const messageBubble = document.createElement('span');
+
+            if (sender === 'local') {
+                messageContainer.className = 'chat-message-local';
+                messageBubble.className = 'chat-bubble-local';
+            } else {
+                messageContainer.className = 'chat-message-remote';
+                messageBubble.className = 'chat-bubble-remote';
+            }
+
+            messageBubble.textContent = message;
+            messageContainer.appendChild(messageBubble);
+            chatMessagesEl.appendChild(messageContainer);
+            chatMessagesEl.scrollTop = chatMessagesEl.scrollHeight;
+        }
+
+        // Send message when Enter is pressed
+        messageInputEl.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                sendMessage();
+            }
+        });
+        
+        // Initial setup on load
+        updateStatus('disconnected');
+    </script>
+</body>
+</html>
