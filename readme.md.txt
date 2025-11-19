@@ -1,88 +1,83 @@
-WebRTC Peer-to-Peer Chat Application
+WebRTC Peer-to-Peer Chat and Screen Share (Firewall-Safe Manual Signaling)
 
-This project is a simple, single-file WebRTC application that allows two devices on the same local network (LAN) to communicate using a peer-to-peer data connection.
+This version of the WebRTC application is designed to bypass office firewalls and proxies that block external signaling servers. It uses Manual Signaling (copy/paste) for connection setup.
 
-It uses the PeerJS library and its public signaling server to handle the necessary WebRTC handshake (SDP and ICE exchange) automatically, making the connection a simple "Host" and "Client" process.
+Why this version works in the office:
+
+No External Server Dependency: The previous version failed because the firewall blocked the connection to the public PeerJS server. This version requires zero external connections during the critical signaling phase, ensuring the connection is established purely over your LAN.
+
+Simple Deployment: You still only need to serve the single HTML file over HTTP.
 
 Prerequisites
 
-To run this application and access it over your LAN, you must serve the HTML file using a local web server. The simplest way is using Python's built-in HTTP server.
+Python: Installed on the host computer (Laptop A) to run the HTTP server.
 
-Python: Ensure you have Python installed on the host computer (Laptop A). Python 3 is preferred.
-
-Local Network: Both devices (Laptop A and Laptop B) must be connected to the same Wi-Fi or Ethernet network.
+Local Network: Both devices must be on the same LAN (Wi-Fi or Ethernet).
 
 Setup Instructions
 
-Step 1: File Preparation
+Step 1: File Preparation & Server Start
 
-Create a new folder for the project (e.g., webrtc-chat).
+Create a new folder and save the webrtc_manual_signaling.html file inside it.
 
-Save the webrtc_messaging_app.html file into this folder.
+On Laptop A (Host): Open your terminal, navigate to the folder, and start the server:
 
-Step 2: Start the Web Server (On Laptop A)
-
-The host device (Laptop A) needs to run a web server to make the file accessible to the client device (Laptop B) over the network.
-
-Open your Terminal (or Command Prompt/PowerShell).
-
-Navigate to the project folder (webrtc-chat).
-
-Run the following command to start the server on port 8000:
-
-# For Python 3
 python3 -m http.server 8000
 
-# For Python 2
-# python -m SimpleHTTPServer 8000
 
+Access on Both Laptops:
 
-You should see output similar to Serving HTTP on 0.0.0.0 port 8000 .... Keep this terminal window open.
+Laptop A: http://localhost:8000/webrtc_manual_signaling.html
 
-Step 3: Find the Host's IP Address (On Laptop A)
+Laptop B: http://[Laptop A's IP Address]:8000/webrtc_manual_signaling.html
 
-The client device needs the host's IP address to connect.
+Step 2: Manual Signaling (The Only Way to Fix CORS/Firewall Issues)
 
-Find the Host IP:
+Follow these steps precisely to establish the connection:
 
-Windows: Open Command Prompt and type ipconfig. Look for the "IPv4 Address" under your active network adapter (e.g., 192.168.1.100).
+Step
 
-Mac/Linux: Open Terminal and type ifconfig or ip a. Look for the IP address under your active network interface (e.g., en0 or wlan0).
+Laptop A (Offerer)
 
-Step 4: Access the Application (On Both Devices)
+Laptop B (Answerer)
 
-Host Access (Laptop A): Open your browser and go to:
+1. Offer
 
-http://localhost:8000/webrtc_messaging_app.html
+Click "1. Create Offer". Copy the JSON from the SDP Input box.
 
+N/A
 
-Client Access (Laptop B): Open your browser and go to:
+2. Answer
 
-http://[Host IP Address]:8000/webrtc_messaging_app.html
+N/A
 
+Paste Offer into SDP Input. Click "3. Set Offer & Create Answer". Copy the resulting Answer JSON from the SDP Input.
 
-(e.g., http://192.168.1.100:8000/webrtc_messaging_app.html)
+3. Finalize SDP
 
-Step 5: Connect the Peers
+Paste Answer into SDP Input. Click "2. Set Answer".
 
-Follow these steps for a successful WebRTC connection:
+N/A
 
-Enter a Common ID: On both Laptop A and Laptop B, enter the exact same unique ID into the input box (e.g., AlphaChatDemo).
+4. Exchange ICE
 
-Start as Host (Laptop A):
+Copy all JSON from Laptop A's ICE Candidates box.
 
-Click "1. Start as Host (Create ID)".
+Paste into Laptop B's ICE Candidates box. Click "4. Add ICE Candidates".
 
-The status will show Connecting. The ID will be displayed, and the host will now wait for the client.
+5. Finalize ICE
 
-Connect as Client (Laptop B):
+Copy all JSON from Laptop B's ICE Candidates box (which now contains both sets).
 
-Click "2. Connect to Host (Use ID)".
+Paste into Laptop A's ICE Candidates box. Click "4. Add ICE Candidates".
 
-The client will attempt to connect to the host ID.
+Step 3: Screen Sharing
 
-Connection Finalization
+Once the Status shows Connected on both devices:
 
-The WebRTC handshake (signaling) will happen automatically in the background via the PeerJS service.
+To Share: The device that wants to share its screen clicks the "Start Screen Share" button. The browser will prompt for screen selection.
 
-When the connection is successful, the Status badge on both screens will turn Connected, and the chat input will become active. You can now send messages peer-to-peer!
+To View: The remote device will automatically start displaying the shared screen in the black video area.
+
+To Stop: Click "Stop Sharing".
+Important Note: If you start or stop screen sharing, the connection data changes. If the connection fails after a share, repeat Step 2 (exchange SDP/ICE again) to re-establish the link.
