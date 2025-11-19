@@ -3,9 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WebRTC Peer Chat & Screen Share</title>
-    <!-- PeerJS CDN for automated signaling -->
-    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <title>WebRTC Manual Signaling Chat & Screen Share</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
@@ -24,27 +22,12 @@
             transition: all 0.15s ease;
             box-shadow: 0 2px 0 0 rgba(0,0,0,0.1);
         }
-        .btn-host {
-            background-color: #10b981; /* Emerald Green */
-            color: white;
-        }
-        .btn-host:hover {
-            background-color: #059669;
-        }
-        .btn-client {
-            background-color: #3b82f6; /* Blue */
-            color: white;
-        }
-        .btn-client:hover {
-            background-color: #2563eb;
-        }
-        .btn-share {
-            background-color: #f59e0b; /* Amber */
-            color: white;
-        }
-        .btn-share:hover:not(:disabled) {
-            background-color: #d97706;
-        }
+        .btn-primary { background-color: #10b981; color: white; }
+        .btn-primary:hover:not(:disabled) { background-color: #059669; }
+        .btn-secondary { background-color: #3b82f6; color: white; }
+        .btn-secondary:hover:not(:disabled) { background-color: #2563eb; }
+        .btn-share { background-color: #f59e0b; color: white; }
+        .btn-share:hover:not(:disabled) { background-color: #d97706; }
         .status-badge {
             display: inline-block;
             padding: 0.25rem 0.75rem;
@@ -55,21 +38,6 @@
         .status-disconnected { background-color: #fee2e2; color: #dc2626; }
         .status-connecting { background-color: #fef3c7; color: #d97706; }
         .status-connected { background-color: #d1fae5; color: #059669; }
-        .chat-message-local { text-align: right; }
-        .chat-message-remote { text-align: left; }
-        .chat-bubble-local { background-color: #bfdbfe; color: #1e3a8a; border-radius: 10px 10px 0 10px; padding: 8px 12px; display: inline-block; max-width: 80%; }
-        .chat-bubble-remote { background-color: #e5e7eb; color: #1f2937; border-radius: 10px 10px 10px 0; padding: 8px 12px; display: inline-block; max-width: 80%; }
-        .id-display {
-            background-color: #e0f2f1; /* Light cyan */
-            color: #0d9488;
-            padding: 0.75rem;
-            border-radius: 8px;
-            font-size: 1.1rem;
-            font-weight: 700;
-            text-align: center;
-            overflow-wrap: break-word;
-            word-break: break-all;
-        }
         #remote-video {
             width: 100%;
             height: auto;
@@ -87,50 +55,59 @@
             border-radius: 8px;
             border: 2px solid white;
             box-shadow: 0 0 10px rgba(0,0,0,0.5);
-            transform: scaleX(-1); /* Mirror effect for self view */
+            transform: scaleX(-1);
         }
     </style>
 </head>
 <body class="p-4 sm:p-8">
     <div class="max-w-4xl mx-auto relative">
-        <h1 class="text-3xl font-bold text-gray-800 mb-6 text-center">WebRTC Peer Chat & Screen Share</h1>
+        <h1 class="text-3xl font-bold text-gray-800 mb-6 text-center">WebRTC Manual Signaling Peer Chat & Screen Share</h1>
         <p class="text-gray-600 mb-4 text-center">
-            Connect first, then click the "Start Screen Share" button to stream your screen to the peer.
+            **Firewall-Safe Method:** No external signaling server. You must copy/paste data to connect.
         </p>
-        
+
         <!-- Connection Status -->
         <div class="card flex justify-center items-center gap-4">
             <span class="text-lg font-medium text-gray-700">Status:</span>
             <span id="connection-status" class="status-badge status-disconnected">Disconnected</span>
         </div>
 
-        <!-- Connection Area -->
-        <div id="connection-area" class="card bg-gray-50 border border-gray-200">
-            <h2 class="text-xl font-semibold mb-3 text-gray-700">Connection Setup</h2>
-            
-            <div class="space-y-4">
-                <input type="text" id="peer-id-input" class="w-full border border-gray-300 rounded-lg p-3 text-base focus:ring-blue-500 focus:border-blue-500" placeholder="Enter a unique ID (e.g., 'LAN_CHAT_42')">
+        <!-- Signaling Area -->
+        <div class="card bg-gray-50 border border-gray-200">
+            <h2 class="text-xl font-semibold mb-3 text-gray-700">1. Signaling (Connection Exchange)</h2>
+            <div id="signaling-area" class="space-y-4">
                 
-                <div class="flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-3">
-                    <button id="host-btn" onclick="startHost()" class="btn btn-host w-full">1. Start as Host (Create ID)</button>
-                    <button id="client-btn" onclick="connectToHost()" class="btn btn-client w-full">2. Connect to Host (Use ID)</button>
-                </div>
-                
-                <div id="host-id-display" class="id-display hidden">
-                    Your ID is: <span id="current-peer-id" class="font-extrabold"></span>
-                    <br><span class="text-sm font-normal">Share this ID with the other person.</span>
+                <p class="text-sm font-medium text-red-600" id="error-message" style="display:none;"></p>
+
+                <!-- SDP Offer/Answer Section -->
+                <div class="space-y-2">
+                    <label for="sdp-input" class="block text-sm font-medium text-gray-700">SDP Offer/Answer (Copy/Paste here):</label>
+                    <textarea id="sdp-input" rows="5" class="w-full border border-gray-300 rounded-lg p-3"></textarea>
+                    
+                    <div class="flex flex-wrap gap-2">
+                        <button onclick="createOffer()" class="btn btn-primary">1. Create Offer (Laptop A)</button>
+                        <button onclick="setRemoteDescription('answer')" class="btn btn-secondary">2. Set Answer (Laptop A)</button>
+                        <button onclick="setRemoteDescription('offer')" class="btn btn-primary">3. Set Offer & Create Answer (Laptop B)</button>
+                    </div>
                 </div>
 
-                <p id="setup-message" class="text-sm text-gray-600 italic mt-4 text-center">
-                    Enter a common ID in the box above to begin.
-                </p>
+                <!-- ICE Candidates Section -->
+                <div class="space-y-2 pt-4 border-t border-gray-200">
+                    <label for="ice-output" class="block text-sm font-medium text-gray-700">ICE Candidates (Collect all candidates here):</label>
+                    <textarea id="ice-output" rows="3" class="w-full border border-gray-300 rounded-lg p-3" readonly></textarea>
+                    
+                    <div class="flex flex-wrap gap-2">
+                        <button onclick="copyToClipboard(document.getElementById('ice-output').value)" class="btn bg-gray-500 text-white">Copy ICE Candidates</button>
+                        <button onclick="addIceCandidates()" class="btn btn-secondary">4. Add ICE Candidates</button>
+                    </div>
+                </div>
             </div>
         </div>
 
         <!-- Video Area -->
         <div id="video-area" class="card bg-gray-900 mt-6 relative overflow-hidden">
             <h2 class="text-xl font-semibold mb-3 text-white">Screen Share View</h2>
-            <video id="remote-video" autoplay muted></video>
+            <video id="remote-video" autoplay muted class="w-full rounded-lg"></video>
             <!-- Local video preview (only visible when sharing) -->
             <video id="local-video" autoplay muted class="hidden"></video>
 
@@ -142,322 +119,348 @@
 
         <!-- Chat Area -->
         <div id="chat-area" class="card bg-gray-100 mt-6">
-            <h2 class="text-xl font-semibold mb-3 text-gray-700">Chat</h2>
+            <h2 class="text-xl font-semibold mb-3 text-gray-700">2. Data Channel Chat</h2>
             <div id="chat-messages" class="h-64 overflow-y-auto p-3 bg-white border border-gray-300 rounded-lg mb-4 space-y-3">
-                <!-- Messages will appear here -->
-                <p class="text-center text-gray-500 text-sm">Waiting for connection...</p>
+                <p class="text-center text-gray-500 text-sm">Follow steps 1-4 above to connect.</p>
             </div>
 
             <div class="flex space-x-2">
                 <input type="text" id="message-input" class="flex-grow border border-gray-300 rounded-lg p-3 focus:ring-blue-500 focus:border-blue-500" placeholder="Type a message..." disabled>
-                <button id="send-button" onclick="sendMessage()" class="btn btn-client" disabled>Send</button>
+                <button id="send-button" onclick="sendMessage()" class="btn btn-secondary" disabled>Send</button>
             </div>
         </div>
     </div>
 
     <script>
+        // --- Configuration ---
+        const rtcConfig = {
+            // Google STUN servers for NAT traversal (crucial for LAN/office environments)
+            iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+        };
+
         // --- Global State ---
-        let peer;
-        let connection;
+        let peerConnection;
+        let dataChannel;
+        let isOffering = false;
+        let collectedCandidates = [];
         let localStream = null;
-        let remoteStream = null;
-        let currentCall = null;
-        
-        // DOM elements
+
+        // DOM Elements
         const statusEl = document.getElementById('connection-status');
-        const peerIdInputEl = document.getElementById('peer-id-input');
-        const hostIdDisplayEl = document.getElementById('host-id-display');
-        const currentPeerIdEl = document.getElementById('current-peer-id');
-        const setupMessageEl = document.getElementById('setup-message');
+        const sdpInput = document.getElementById('sdp-input');
+        const iceOutput = document.getElementById('ice-output');
         const chatMessagesEl = document.getElementById('chat-messages');
-        const messageInputEl = document.getElementById('message-input');
+        const messageInput = document.getElementById('message-input');
         const sendButton = document.getElementById('send-button');
-        const hostBtn = document.getElementById('host-btn');
-        const clientBtn = document.getElementById('client-btn');
-        const shareBtn = document.getElementById('share-btn');
-        const stopShareBtn = document.getElementById('stop-share-btn');
         const remoteVideo = document.getElementById('remote-video');
         const localVideo = document.getElementById('local-video');
+        const shareBtn = document.getElementById('share-btn');
+        const stopShareBtn = document.getElementById('stop-share-btn');
+        const errorMsgEl = document.getElementById('error-message');
 
-        // Configuration for PeerJS (using the default public broker)
-        const peerConfig = {};
 
-        /**
-         * Utility function to log messages to the console and the chat area.
-         */
+        // --- Utility Functions ---
+
         function log(message, type = 'system') {
             console.log(message);
+            errorMsgEl.style.display = 'none'; // Hide error on successful log
             if (type === 'system') {
                 const p = document.createElement('p');
                 p.className = 'text-center text-gray-500 text-sm italic';
                 p.textContent = `[${message}]`;
                 chatMessagesEl.appendChild(p);
                 chatMessagesEl.scrollTop = chatMessagesEl.scrollHeight;
+            } else if (type === 'error') {
+                 errorMsgEl.textContent = `Error: ${message}`;
+                 errorMsgEl.style.display = 'block';
             }
         }
 
-        /**
-         * Updates the connection status badge.
-         */
         function updateStatus(state) {
             statusEl.textContent = state;
             statusEl.className = 'status-badge';
-
             if (state === 'disconnected') {
                 statusEl.classList.add('status-disconnected');
-                messageInputEl.disabled = true;
+                messageInput.disabled = true;
                 sendButton.disabled = true;
                 shareBtn.disabled = true;
+                stopShareBtn.disabled = true;
             } else if (state === 'connecting') {
                 statusEl.classList.add('status-connecting');
             } else if (state === 'connected') {
                 statusEl.classList.add('status-connected');
-                messageInputEl.disabled = false;
+                messageInput.disabled = false;
                 sendButton.disabled = false;
-                shareBtn.disabled = false; // Enable sharing after connection
+                shareBtn.disabled = false;
             }
-        }
-
-        /**
-         * Attaches the remote stream to the video element.
-         */
-        function attachRemoteStream(stream) {
-            remoteStream = stream;
-            remoteVideo.srcObject = remoteStream;
-            log('Remote screen sharing started.', 'system');
-        }
-
-        /**
-         * Sets up listeners for the data connection (both host and client).
-         */
-        function setupConnectionListeners(conn) {
-            connection = conn;
-            updateStatus('connecting');
-
-            connection.on('open', () => {
-                updateStatus('connected');
-                log('Data connection is open! You can now chat and share your screen.', 'system');
-                hostBtn.disabled = true;
-                clientBtn.disabled = true;
-                peerIdInputEl.disabled = true;
-            });
-
-            connection.on('data', data => {
-                displayMessage(data, 'remote');
-            });
-
-            connection.on('close', () => {
-                updateStatus('disconnected');
-                stopScreenShare(); // Ensure stream stops on disconnect
-                log('Connection closed.', 'system');
-                // Allow re-connecting
-                hostBtn.disabled = false;
-                clientBtn.disabled = false;
-                peerIdInputEl.disabled = false;
-            });
-
-            connection.on('error', (err) => {
-                log(`Connection Error: ${err.type}`, 'system');
-                updateStatus('disconnected');
-            });
-        }
-
-        /**
-         * Initializes the PeerJS instance and sets up media call listeners.
-         */
-        function initializePeer(id) {
-            if (peer) peer.destroy();
-
-            peer = new Peer(id, peerConfig);
-            updateStatus('connecting');
-            
-            // PeerJS Events
-            peer.on('open', (peerId) => {
-                log(`Peer initialized with ID: ${peerId}`, 'system');
-                currentPeerIdEl.textContent = peerId;
-            });
-
-            peer.on('error', (err) => {
-                log(`Peer Error: ${err.message}`, 'system');
-                updateStatus('disconnected');
-                hostBtn.disabled = false;
-                clientBtn.disabled = false;
-            });
-            
-            // --- LISTEN FOR INCOMING CALLS (HOST ROLE) ---
-            peer.on('call', (call) => {
-                log(`Incoming screen share call from: ${call.peer}`, 'system');
-                
-                // Answer the call immediately without a local stream (as the peer is sharing their screen)
-                call.answer(); 
-                currentCall = call;
-
-                call.on('stream', (remoteStream) => {
-                    attachRemoteStream(remoteStream);
-                });
-
-                call.on('close', () => {
-                    log('Screen share ended by remote peer.', 'system');
-                    remoteVideo.srcObject = null;
-                });
-            });
-        }
-
-        // --- Host Logic (Creates the ID and waits for connection) ---
-        window.startHost = function() {
-            const hostId = peerIdInputEl.value.trim();
-            if (!hostId) {
-                alert('Please enter a unique ID for the host.');
-                return;
-            }
-
-            // 1. Initialize Peer and media listeners
-            initializePeer(hostId);
-            
-            // 2. Set up listener for incoming data connections
-            peer.on('connection', (conn) => {
-                log(`Incoming data connection detected from peer: ${conn.peer}`, 'system');
-                setupConnectionListeners(conn);
-            });
-
-            // 3. Update UI
-            setupMessageEl.textContent = 'Waiting for the client to connect...';
-            hostIdDisplayEl.classList.remove('hidden');
-            hostBtn.disabled = true;
-            clientBtn.disabled = true;
-            peerIdInputEl.disabled = true;
-        }
-
-        // --- Client Logic (Uses the Host's ID to connect) ---
-        window.connectToHost = function() {
-            const hostId = peerIdInputEl.value.trim();
-            if (!hostId) {
-                alert('Please enter the Host ID to connect.');
-                return;
-            }
-
-            // 1. Initialize Peer (random ID for client)
-            initializePeer(); 
-            
-            // 2. Initiate the data connection
-            peer.on('open', (clientId) => {
-                log(`Attempting data connection to host: ${hostId}`, 'system');
-                const conn = peer.connect(hostId);
-                setupConnectionListeners(conn);
-            });
-            
-            // 3. Update UI
-            setupMessageEl.textContent = `Attempting to connect to ID: ${hostId}...`;
-            hostIdDisplayEl.classList.add('hidden');
-            hostBtn.disabled = true;
-            clientBtn.disabled = true;
-            peerIdInputEl.disabled = true;
         }
         
+        function copyToClipboard(text) {
+            if (!document.execCommand('copy')) {
+                // Fallback for older environments
+                sdpInput.value = text;
+                sdpInput.select();
+                document.execCommand('copy');
+            }
+            log('Copied data to clipboard! Paste it into the peer\'s SDP box.', 'system');
+        }
+
+        // --- RTC Peer Connection Setup ---
+        
+        /**
+         * Initializes the RTCPeerConnection and its listeners.
+         * Creates a data channel if this instance is the offerer.
+         */
+        function initializePeerConnection(createDataChannel = false) {
+            if (peerConnection) {
+                peerConnection.close();
+            }
+            
+            peerConnection = new RTCPeerConnection(rtcConfig);
+            collectedCandidates = [];
+            iceOutput.value = ''; // Clear ICE output on new connection
+            
+            updateStatus('connecting');
+            log('New RTCPeerConnection initialized.', 'system');
+
+            // 1. ICE Candidate Listener (Gathers candidates)
+            peerConnection.onicecandidate = (event) => {
+                if (event.candidate) {
+                    // Collect candidates as JSON string
+                    collectedCandidates.push(event.candidate.toJSON());
+                    iceOutput.value = JSON.stringify(collectedCandidates, null, 2);
+                    log('ICE candidate gathered.', 'system');
+                } else {
+                    log('ICE gathering complete.', 'system');
+                    // This is where you would traditionally send the ICE list
+                }
+            };
+            
+            // 2. Data Channel Listener (For the Answerer)
+            peerConnection.ondatachannel = (event) => {
+                dataChannel = event.channel;
+                setupDataChannelListeners();
+                log('Remote DataChannel received.', 'system');
+            };
+
+            // 3. Remote Stream Listener (For both peers in this setup)
+            peerConnection.ontrack = (event) => {
+                log('Remote media track received.', 'system');
+                // The first stream received is the screen share
+                remoteVideo.srcObject = event.streams[0];
+            };
+
+            // 4. Create Data Channel (For the Offerer)
+            if (createDataChannel) {
+                dataChannel = peerConnection.createDataChannel("chat-channel");
+                setupDataChannelListeners();
+                log('Local DataChannel created.', 'system');
+            }
+        }
+
+        /**
+         * Sets up listeners for the RTCDataChannel.
+         */
+        function setupDataChannelListeners() {
+            dataChannel.onopen = () => {
+                updateStatus('connected');
+                log('Data channel is now open. Chatting enabled.', 'system');
+            };
+
+            dataChannel.onmessage = (event) => {
+                displayMessage(event.data, 'remote');
+            };
+
+            dataChannel.onclose = () => {
+                updateStatus('disconnected');
+                stopScreenShare(false); // Stop sharing cleanly
+                log('Data channel closed.', 'system');
+            };
+
+            dataChannel.onerror = (err) => {
+                log(`Data Channel Error: ${err.message}`, 'error');
+            };
+        }
+
+        // --- Signaling Steps ---
+        
+        /**
+         * Step 1: Create the SDP Offer (Laptop A)
+         */
+        window.createOffer = async () => {
+            isOffering = true;
+            initializePeerConnection(true); // Create Data Channel
+            
+            try {
+                const offer = await peerConnection.createOffer();
+                await peerConnection.setLocalDescription(offer);
+                
+                // Display the SDP Offer for manual copy/paste
+                sdpInput.value = JSON.stringify(peerConnection.localDescription);
+                log('SDP Offer created. Copy to Laptop B.', 'system');
+            } catch (err) {
+                log(`Failed to create offer: ${err}`, 'error');
+            }
+        }
+        
+        /**
+         * Step 3: Set Offer and Create Answer (Laptop B)
+         * or
+         * Step 2: Set Answer (Laptop A)
+         */
+        window.setRemoteDescription = async (type) => {
+            const sdpText = sdpInput.value.trim();
+            if (!sdpText) {
+                log('Please paste the SDP data before clicking.', 'error');
+                return;
+            }
+            
+            try {
+                const sdp = JSON.parse(sdpText);
+                
+                if (type === 'offer') {
+                    // Laptop B receives Offer -> initializes, sets remote, creates answer
+                    isOffering = false;
+                    initializePeerConnection(false); // Do NOT create Data Channel
+                    
+                    await peerConnection.setRemoteDescription(new RTCSessionDescription(sdp));
+                    const answer = await peerConnection.createAnswer();
+                    await peerConnection.setLocalDescription(answer);
+                    
+                    // Display the SDP Answer for manual copy/paste
+                    sdpInput.value = JSON.stringify(peerConnection.localDescription);
+                    log('SDP Answer created. Copy back to Laptop A.', 'system');
+                } else if (type === 'answer') {
+                    // Laptop A receives Answer -> sets remote
+                    await peerConnection.setRemoteDescription(new RTCSessionDescription(sdp));
+                    log('SDP Answer set. Connection pending ICE exchange.', 'system');
+                }
+            } catch (err) {
+                log(`Failed to process SDP: Invalid JSON or WebRTC error.`, 'error');
+                console.error(err);
+            }
+        }
+        
+        /**
+         * Step 4: Add ICE Candidates (Both Laptops)
+         */
+        window.addIceCandidates = async () => {
+            const iceText = iceOutput.value.trim();
+            if (!iceText) {
+                log('Please paste ICE Candidates JSON into the box.', 'error');
+                return;
+            }
+            
+            try {
+                const candidates = JSON.parse(iceText);
+                if (!Array.isArray(candidates)) throw new Error("Invalid ICE format");
+
+                for (const candidate of candidates) {
+                    await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+                }
+                log(`Added ${candidates.length} ICE candidates.`, 'system');
+            } catch (err) {
+                log(`Failed to add ICE candidates: ${err}`, 'error');
+            }
+        }
+
         // --- Screen Sharing Logic ---
 
         /**
-         * Starts capturing the user's screen and initiates a PeerJS call.
+         * Starts capturing the user's screen and adds the track to the connection.
          */
         window.startScreenShare = async () => {
-            if (!connection || !connection.open) {
-                log('Cannot share screen. Please establish the data connection first.', 'system');
+            if (!peerConnection) {
+                log('Please establish the connection first (Steps 1-4).', 'error');
                 return;
             }
             
-            // Use getDisplayMedia for screen sharing
             try {
+                // Get display media (screen share)
                 localStream = await navigator.mediaDevices.getDisplayMedia({
                     video: true,
-                    audio: true // Optional: share system audio
+                    audio: false // Sharing system audio is often complex, stick to video
                 });
                 
-                // Display local preview (optional)
+                // Display local preview
                 localVideo.srcObject = localStream;
                 localVideo.classList.remove('hidden');
-                
-                // Create a PeerJS call with the target peer ID and the local stream
-                currentCall = peer.call(connection.peer, localStream);
-                
-                // Set up listener for remote peer's stream (in case they call back or we need to manage connections)
-                currentCall.on('stream', (remoteStream) => {
-                    // This will be called if the remote peer also sends a stream, 
-                    // but for dedicated screen share, we primarily handle the remote stream on the listening peer.
-                });
 
-                currentCall.on('close', () => {
-                    stopScreenShare();
+                // Add the tracks to the PeerConnection
+                localStream.getTracks().forEach(track => {
+                    peerConnection.addTrack(track, localStream);
                 });
 
                 // Listen for when the user stops sharing via the browser's UI button
                 localStream.getVideoTracks()[0].onended = () => {
-                    stopScreenShare();
+                    stopScreenShare(true);
                 };
-
+                
                 shareBtn.disabled = true;
                 stopShareBtn.disabled = false;
-                log('Screen sharing is active.', 'system');
+                log('Screen sharing stream attached.', 'system');
 
             } catch (err) {
-                log(`Failed to get screen access: ${err.name}`, 'system');
+                log(`Failed to get screen access: ${err.name}. Sharing aborted.`, 'error');
                 localStream = null;
             }
         }
 
         /**
-         * Stops the local screen capture and closes the PeerJS call.
+         * Stops the local screen capture and removes the tracks from the connection.
          */
-        window.stopScreenShare = () => {
+        window.stopScreenShare = (userAction = false) => {
             if (localStream) {
-                localStream.getTracks().forEach(track => track.stop());
+                localStream.getTracks().forEach(track => {
+                    track.stop();
+                    // Remove tracks from the PeerConnection
+                    peerConnection.getSenders().forEach(sender => {
+                        if (sender.track === track) {
+                            peerConnection.removeTrack(sender);
+                        }
+                    });
+                });
                 localStream = null;
                 localVideo.srcObject = null;
                 localVideo.classList.add('hidden');
+                
+                if (userAction) {
+                    // Need to signal SDP change after removing tracks
+                    createOffer(); 
+                    log('Screen share stopped. **NOTE: Re-exchange SDP/ICE if the peer connection is lost.**', 'system');
+                }
             }
-
-            if (currentCall) {
-                currentCall.close();
-                currentCall = null;
-            }
-
-            // Clear remote stream display for both peers when sharing stops
+            
+            // Clear remote stream on both sides
             remoteVideo.srcObject = null;
             
             shareBtn.disabled = false;
             stopShareBtn.disabled = true;
-            log('Screen sharing stopped.', 'system');
+            if (!userAction) log('Screen share stopped.', 'system');
         }
-
 
         // --- Messaging ---
         
-        /**
-         * Sends the message via the RTCDataChannel.
-         */
         window.sendMessage = () => {
-            const message = messageInputEl.value.trim();
-            if (message === '' || !connection || !connection.open) return;
+            const message = messageInput.value.trim();
+            if (message === '' || !dataChannel || dataChannel.readyState !== 'open') return;
 
-            connection.send(message);
+            dataChannel.send(message);
             displayMessage(message, 'local');
-            messageInputEl.value = '';
+            messageInput.value = '';
         }
         
-        /**
-         * Displays a message in the chat area.
-         */
         function displayMessage(message, sender) {
             const messageContainer = document.createElement('div');
             const messageBubble = document.createElement('span');
 
-            if (sender === 'local') {
-                messageContainer.className = 'chat-message-local';
-                messageBubble.className = 'chat-bubble-local';
-            } else {
-                messageContainer.className = 'chat-message-remote';
-                messageBubble.className = 'chat-bubble-remote';
-            }
+            const alignClass = sender === 'local' ? 'text-right' : 'text-left';
+            const bubbleClass = sender === 'local' 
+                ? 'bg-blue-200 text-blue-900 rounded-lg p-2 max-w-xs inline-block rounded-br-none' 
+                : 'bg-gray-200 text-gray-900 rounded-lg p-2 max-w-xs inline-block rounded-bl-none';
 
+            messageContainer.className = alignClass;
+            messageBubble.className = bubbleClass;
             messageBubble.textContent = message;
             messageContainer.appendChild(messageBubble);
             chatMessagesEl.appendChild(messageContainer);
@@ -465,7 +468,7 @@
         }
 
         // Send message when Enter is pressed
-        messageInputEl.addEventListener('keypress', (e) => {
+        messageInput.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') {
                 sendMessage();
             }
